@@ -2,7 +2,9 @@ import glob
 import os
 import dask.dataframe as dd
 import pandas as pd
-import matplotlib.pyplot as plt
+import matplotlib.pylab as plt
+import numpy as np
+import vaex as vx
 
 
 def cleaner(folder_glob):
@@ -54,6 +56,36 @@ def dd_reader(folder):
     return df
 
 
+def vx_reader(folder):
+    print("Starting read")
+    df = vx.open(folder,
+                 dtype={'Actor1Code': str,
+                        'Actor1Name': str,
+                        'EventCode': str,
+                        'ActionGeo_ADM1Code': str})
+    print("Read complete")
+    print("Starting cleanup")
+    df['EventType'] = df.EventCode[:2]
+    df['EventDetails'] = df.EventCode[2:]
+    df['EventCountry'] = df.ActionGeo_ADM1Code[:2]
+    df['EventRegion'] = df.ActionGeo_ADM1Code[2:]
+    df = df.dropna()
+    print("Cleanup complete")
+    return df
+
+
+def scatter_plotter(df):
+    columns = ['NumMentions']
+    for y_data in columns:
+        print("Current column:" + y_data)
+        xycounts = df.count(binby=[df.AvgTone, y_data], limits=[[-20, 20], [0, 50]])
+        plt.rcParams["figure.figsize"] = [12, 12]
+        plt.rcParams["figure.autolayout"] = True
+        plt.imshow(xycounts.T, origin='lower', extent=[-20, 20, 0, 50])
+        plt.show()
+        plt.savefig(y_data + '.png', dpi=1200)
+
+
 def main():
     folder = "data"
     path = os.path.join(os.getcwd(), folder, "*")
@@ -62,9 +94,18 @@ def main():
     # path = os.path.join(os.getcwd(), "cleaned")
     # cleaned_files = glob.glob(os.path.join(path, "*"))
     # # df = reader(cleaned_files)
-    df = dd_reader(path)
+    # df = dd_reader(path)
+    df = vx_reader(path)
     # df = event_splitter(df)
-    print(df.info())
+    # print(df.info())
+    # print(df.count())
+    scatter_plotter(df)
+    print("Done!")
+    # print(df.shape[0].compute())
+    # df.to_dask_array(lengths=True)
+    # pd_df = df.compute()
+    # plt.scatter(pd_df['AvgTone'], pd_df['SQLDATE'])
+    # plt.show()
     # df.head(5)
 
 
