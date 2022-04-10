@@ -3,7 +3,11 @@ import time
 
 import dask.dataframe as dd
 import pandas as pd
-import sklearn.linear_model
+# import sklearn.linear_model
+import sklearn.ensemble
+import sklearn.linear_model as sklm
+import sklearn.preprocessing as skpp
+import sklearn.compose as skcp
 import vaex
 import vaex.ml
 import vaex.ml.sklearn
@@ -70,16 +74,21 @@ def vx_reader(folder):
     print("Read completed in", time.time() - read_time, "seconds")
     print("Starting cleanup")
     clean_time = time.time()
-    df['EventType'] = df.EventCode[:2]
-    df['EventDetails'] = df.EventCode[2:]
-    df['EventCountry'] = df.ActionGeo_ADM1Code[:2]
-    df['EventRegion'] = df.ActionGeo_ADM1Code[2:]
-    df['Year'] = df.SQLDATE[0:4]
-    df['Month'] = df.SQLDATE[4:6]
+    df.dropna()
+    df = df[df.NumMentions > 5000]
+    df = df[df.SQLDATE > 20000000]
+    df['EventType'] = df.EventCode.str.slice(start=0, stop=2)
+    df['EventDetails'] = df.EventCode.str.slice(start=2)
+    df['EventCountry'] = df.ActionGeo_ADM1Code.str.slice(start=0, stop=2)
+    df['EventRegion'] = df.ActionGeo_ADM1Code.str.slice(start=2)
+    # df['Year'] = df.SQLDATE.str.slice(start=0, stop=4)
+    # df['Month'] = df.SQLDATE.str.slice(start=4, stop=6)
+    # df['Month'] = df.Month.astype('str')
+    df = df.drop(['EventCode', 'ActionGeo_ADM1Code'])
     df = df.dropna()
-    df = df[df.NumMentions > 500]
+    # df = df[df.NumMentions > 500]
     print("Cleanup completed in", time.time() - clean_time, "seconds")
-    print(df.head(5))
+    # print(df.head(5))
     return df
 
 
@@ -100,13 +109,15 @@ def scatter_plotter(df):
 
 def one_hot(df):
     print("Starting one hot encoding")
-    fit_time = time.time()
-    features = ['EventType', 'EventDetails', 'EventCountry', 'EventRegion', 'Month']
+    features = ['EventType', 'EventDetails', 'EventCountry']
     target = 'AvgTone'
+    one_hot_encoder = vaex.ml.OneHotEncoder(features=features)
+    one_hot_df = one_hot_encoder.fit_transform(df)
     model = sklearn.linear_model.LinearRegression()
     print("Starting fit")
+    fit_time = time.time()
     vaex_model = vaex.ml.sklearn.Predictor(features=features, target=target, model=model, prediction_name='prediction')
-    vaex_model.fit(df=df)
+    vaex_model.fit(df=one_hot_df)
     print("One hot fitting done in", time.time() - fit_time, "seconds")
     print("Starting one hot transform")
     transform_time = time.time()
@@ -116,11 +127,29 @@ def one_hot(df):
     return fitted_df
 
 
+def random_forests(features, target, df):
+    print("Starting random forests")
+    # fit_time = time.time()
+    forest_time = time.time()
+    model = sklearn.ensemble.RandomForestRegressor()
+    print("Starting fit")
+    vaex_model = vaex.ml.sklearn.Predictor(features=features, target=target, model=model, prediction_name='rf')
+    vaex_model.fit(df=df)
+    print("Random forest fit done in", time.time() - forest_time, "seconds")
+    transform_time = time.time()
+    fitted_df = vaex_model.transform(df)
+    print("Linear regression transform done in", time.time() - transform_time, "seconds")
+    return fitted_df
+
+
 def main():
     folder = "data"
     path = os.path.join(os.getcwd(), folder, "*")
     df = vx_reader(path)
-    one_hot_df = one_hot(df)
+    features = ['EventType', 'EventDetails', 'EventCountry', 'Actor1Code', 'Actor1Name', 'NumMentions']
+    target = 'AvgTone'
+    # one_hot_df = one_hot(df)
+    rf_df = random_forests(features, target, df)
 
 
 if __name__ == '__main__':
